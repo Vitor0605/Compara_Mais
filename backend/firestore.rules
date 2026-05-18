@@ -1,0 +1,174 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ========== Helper Functions ==========
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return request.auth.token.isAdmin == true;
+    }
+    
+    function isCurrentUser(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // ========== USERS Collection ==========
+    
+    match /users/{userId} {
+      // Allow users to read their own profile
+      allow read: if isCurrentUser(userId);
+      
+      // Allow users to update their own profile (limited fields)
+      allow update: if isCurrentUser(userId) && 
+        request.resource.data.keys().hasOnly(['displayName', 'preferences', 'updatedAt']);
+      
+      // Allow admins to read all user data
+      allow read: if isAdmin();
+      
+      // Prevent direct creation of user docs (use Cloud Function instead)
+      allow create: if false;
+      
+      // Prevent deletion of user docs
+      allow delete: if false;
+    }
+
+    // ========== STORES Collection ==========
+    
+    match /stores/{storeId} {
+      // Allow anyone to read verified stores
+      allow read: if resource.data.verified == true;
+      
+      // Allow admins to read all stores
+      allow read: if isAdmin();
+      
+      // Allow authenticated users to create new stores
+      allow create: if isAuthenticated() && 
+        request.resource.data.name != null &&
+        request.resource.data.address != null &&
+        request.resource.data.type in ['mercado', 'loja', 'supermercado'] &&
+        request.resource.data.createdBy == request.auth.uid;
+      
+      // Allow admins to verify stores
+      allow update: if isAdmin() && 
+        (request.resource.data.verified != resource.data.verified ||
+         request.resource.data.rejected != resource.data.rejected);
+      
+      // Store owner can update store info
+      allow update: if isOwner(resource.data.createdBy) &&
+        request.resource.data.keys().hasOnly(['name', 'address', 'type', 'coordinates', 'updatedAt']);
+      
+      // Only admins can delete stores
+      allow delete: if isAdmin();
+    }
+
+    // ========== PRODUCTS Collection ==========
+    
+    match /products/{productId} {
+      // Allow anyone to read products
+      allow read: if true;
+      
+      // Allow authenticated users to create products
+      allow create: if isAuthenticated() &&
+        request.resource.data.name != null &&
+        request.resource.data.brand != null &&
+        request.resource.data.category != null;
+      
+      // Allow product creator to update
+      allow update: if isOwner(resource.data.createdBy) &&
+        request.resource.data.keys().hasOnly(['name', 'brand', 'category', 'barcode', 'updatedAt']);
+      
+      // Only admins can delete products
+      allow delete: if isAdmin();
+    }
+
+    // ========== PRICES Collection ==========
+    
+    match /prices/{priceId} {
+      // Allow anyone to read prices (price comparison is public)
+      allow read: if true;
+      
+      // Allow authenticated users to submit prices
+      allow create: if isAuthenticated() &&
+        request.resource.data.productId != null &&
+        request.resource.data.storeId != null &&
+        request.resource.data.price > 0 &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.currency in ['BRL', 'USD', 'EUR'] &&
+        request.resource.data.unit in ['kg', 'g', 'l', 'ml', 'unidade', 'pacote', 'dúzia'];
+      
+      // Allow price creator to update (limited fields)
+      allow update: if isOwner(resource.data.userId) &&
+        request.resource.data.keys().hasOnly(['price', 'quantity', 'photoUrl', 'updatedAt']);
+      
+      // Only admins can flag/verify prices
+      allow update: if isAdmin() &&
+        request.resource.data.keys().hasOnly(['flagged', 'verified', 'flagReason', 'updatedAt']);
+      
+      // Only the creator or admins can delete
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // ========== FEEDBACK Collection ==========
+    
+    match /feedback/{feedbackId} {
+      // Allow anyone to read feedback
+      allow read: if true;
+      
+      // Allow authenticated users to create feedback
+      allow create: if isAuthenticated() &&
+        request.resource.data.priceId != null &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.type in ['helpful', 'incorrect', 'spam'];
+      
+      // Only creator can delete their feedback
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    // ========== REPORTS Collection ==========
+    
+    match /reports/{reportId} {
+      // Allow anyone to read reports
+      allow read: if isAdmin();
+      
+      // Allow authenticated users to create reports
+      allow create: if isAuthenticated() &&
+        (request.resource.data.priceId != null || 
+         request.resource.data.storeId != null ||
+         request.resource.data.userId != null) &&
+        request.resource.data.reportedBy == request.auth.uid &&
+        request.resource.data.reason != null;
+      
+      // Only admins can update reports
+      allow update: if isAdmin();
+      
+      // Only admins can delete reports
+      allow delete: if isAdmin();
+    }
+
+    // ========== ADMIN_LOGS Collection ==========
+    
+    match /admin_logs/{logId} {
+      // Only admins can read logs
+      allow read: if isAdmin();
+      
+      // Logs are written by Cloud Functions
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ========== Default deny ==========
+    
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
