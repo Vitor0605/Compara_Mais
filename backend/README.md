@@ -1,9 +1,9 @@
-# README - Backend Compara Mais
+# Backend - Compara Mais
 
 ## Estrutura
 
-- **functions/index.js** - Cloud Functions para lógica do backend
-- **firestore.rules** - Regras de segurança do Firestore
+- `functions/index.js` - Cloud Functions para lógica do backend
+- `firestore.rules` - Regras de segurança do Firestore
 
 ## Cloud Functions Disponíveis
 
@@ -39,10 +39,3 @@ firebase deploy --only functions,firestore:rules
 ```bash
 firebase emulators:start
 ```
-
-## Firestore Rules
-
-- Leitura pública para preços, produtos, lojas (apenas verificados)
-- Escrita restrita a usuários autenticados
-- Dados pessoais privados (apenas o próprio usuário)
-- Admins têm acesso total para moderação
